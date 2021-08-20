@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"strings"
 )
 
 // set up context wireframe to use in templates
@@ -46,6 +47,50 @@ func (app *application) renderTemplate(w http.ResponseWriter, r *http.Request, p
 	if app.config.env == "production" && templateInMap {
 		t = app.templateCache[templateToRender]
 	} else {
-
+		t, err = app.parseTemplate(partials, page, templateToRender)
+		if err != nil {
+			app.errorLog.Println(err)
+			return err
+		}
 	}
+
+	if td == nil {
+		td = &templateData{}
+	}
+
+	td = app.addDefaultData(td, r)
+
+	err = t.Execute(w, td)
+	if err != nil {
+		app.errorLog.Println(err)
+		return err
+	}
+
+	return nil
+}
+
+func (app *application) parseTemplate(partials []string, page, templateToRender string) (*template.Template, error) {
+	var t *template.Template
+	var err error
+
+	// build partials // prep data e.g generate paths for partial template files
+	if len(partials) > 0 {
+		for i, x := range partials {
+			partials[i] = fmt.Sprintf("templates/%s.partial.gohtml", x)
+		}
+	}
+
+	if len(partials) > 0 {
+		t, err = template.New(fmt.Sprintf("%s.page.gohtml", page)).Funcs(functions).ParseFS(templateFS, "templates/base.layout.gohtml", strings.Join(partials, ","), templateToRender)
+	} else {
+		t, err = template.New(fmt.Sprintf("%s.page.gohtml", page)).Funcs(functions).ParseFS(templateFS, "templates/base.layout.gohtml",templateToRender)
+	}
+
+	if err != nil {
+		app.errorLog.Println(err)
+		return nil, err
+	}
+
+	app.templateCache[templateToRender] = t
+	return t, nil
 }
